@@ -1,0 +1,282 @@
+import tkinter as tk
+from tkinter import ttk, messagebox
+import json
+import os
+from datetime import datetime
+
+# ---------------------- Constants ----------------------
+TASKS_FILE = 'tasks.json'
+
+# ---------------------- Helper Functions ----------------------
+def load_tasks():
+    """Load tasks from a JSON file."""
+    if os.path.exists(TASKS_FILE):
+        try:
+            with open(TASKS_FILE, 'r') as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            messagebox.showerror("Error", "Failed to decode tasks.json. Starting with an empty task list.")
+            return []
+    return []
+
+def save_tasks(tasks):
+    """Save tasks to a JSON file."""
+    with open(TASKS_FILE, 'w') as f:
+        json.dump(tasks, f, indent=4)
+
+def validate_date(date_text):
+    """Validate the date format YYYY-MM-DD."""
+    try:
+        datetime.strptime(date_text, '%Y-%m-%d')
+        return True
+    except ValueError:
+        return False
+
+# ---------------------- Application Class ----------------------
+class ToDoApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("To-Do List Application")
+        self.root.geometry("700x500")
+        self.tasks = load_tasks()
+
+        # Configure the grid
+        self.root.columnconfigure(0, weight=1)
+        self.root.rowconfigure(0, weight=1)
+
+        # Create the main frame
+        self.main_frame = ttk.Frame(self.root, padding="10")
+        self.main_frame.grid(row=0, column=0, sticky="NSEW")
+
+        # Create widgets
+        self.create_widgets()
+        self.populate_tasks()
+
+    def create_widgets(self):
+        # Task Entry Frame
+        entry_frame = ttk.LabelFrame(self.main_frame, text="Add New Task")
+        entry_frame.grid(row=0, column=0, padx=10, pady=10, sticky="EW")
+
+        # Title
+        ttk.Label(entry_frame, text="Title:").grid(row=0, column=0, padx=5, pady=5, sticky="W")
+        self.title_entry = ttk.Entry(entry_frame, width=50)
+        self.title_entry.grid(row=0, column=1, padx=5, pady=5, sticky="W")
+
+        # Description
+        ttk.Label(entry_frame, text="Description:").grid(row=1, column=0, padx=5, pady=5, sticky="NW")
+        self.description_text = tk.Text(entry_frame, width=38, height=4)
+        self.description_text.grid(row=1, column=1, padx=5, pady=5, sticky="W")
+
+        # Priority
+        ttk.Label(entry_frame, text="Priority:").grid(row=2, column=0, padx=5, pady=5, sticky="W")
+        self.priority_var = tk.StringVar()
+        self.priority_combo = ttk.Combobox(entry_frame, textvariable=self.priority_var, state="readonly")
+        self.priority_combo['values'] = ("Low", "Medium", "High")
+        self.priority_combo.current(1)
+        self.priority_combo.grid(row=2, column=1, padx=5, pady=5, sticky="W")
+
+        # Due Date
+        ttk.Label(entry_frame, text="Due Date (YYYY-MM-DD):").grid(row=3, column=0, padx=5, pady=5, sticky="W")
+        self.due_date_entry = ttk.Entry(entry_frame, width=20)
+        self.due_date_entry.grid(row=3, column=1, padx=5, pady=5, sticky="W")
+
+        # Add Task Button
+        self.add_button = ttk.Button(entry_frame, text="Add Task", command=self.add_task)
+        self.add_button.grid(row=4, column=1, padx=5, pady=10, sticky="E")
+
+        # Tasks Treeview
+        tree_frame = ttk.Frame(self.main_frame)
+        tree_frame.grid(row=1, column=0, padx=10, pady=10, sticky="NSEW")
+
+        columns = ("Title", "Description", "Priority", "Due Date", "Status")
+        self.tree = ttk.Treeview(tree_frame, columns=columns, show="headings", selectmode="browse")
+        for col in columns:
+            self.tree.heading(col, text=col)
+            if col == "Description":
+                self.tree.column(col, width=200)
+            else:
+                self.tree.column(col, width=100)
+        self.tree.pack(side="left", fill="both", expand=True)
+
+        # Scrollbar for Treeview
+        scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscroll=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+
+        # Action Buttons Frame
+        action_frame = ttk.Frame(self.main_frame)
+        action_frame.grid(row=2, column=0, padx=10, pady=10, sticky="EW")
+
+        # Mark as Complete Button
+        self.complete_button = ttk.Button(action_frame, text="Mark as Complete", command=self.mark_complete)
+        self.complete_button.pack(side="left", padx=5)
+
+        # Edit Task Button
+        self.edit_button = ttk.Button(action_frame, text="Edit Task", command=self.edit_task)
+        self.edit_button.pack(side="left", padx=5)
+
+        # Delete Task Button
+        self.delete_button = ttk.Button(action_frame, text="Delete Task", command=self.delete_task)
+        self.delete_button.pack(side="left", padx=5)
+
+    def add_task(self):
+        title = self.title_entry.get().strip()
+        description = self.description_text.get("1.0", tk.END).strip()
+        priority = self.priority_var.get()
+        due_date = self.due_date_entry.get().strip()
+
+        if not title:
+            messagebox.showwarning("Input Error", "Please enter a task title.")
+            return
+
+        if due_date and not validate_date(due_date):
+            messagebox.showwarning("Input Error", "Please enter a valid due date in YYYY-MM-DD format.")
+            return
+
+        task = {
+            'title': title,
+            'description': description,
+            'priority': priority,
+            'due_date': due_date,
+            'completed': False
+        }
+        self.tasks.append(task)
+        save_tasks(self.tasks)
+        self.populate_tasks()
+        self.clear_entries()
+
+    def populate_tasks(self):
+        # Clear the treeview
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+
+        # Insert tasks into the treeview
+        for idx, task in enumerate(self.tasks, start=1):
+            status = "Completed" if task['completed'] else "Pending"
+            self.tree.insert('', 'end', iid=idx, values=(
+                task['title'],
+                task['description'],
+                task['priority'],
+                task['due_date'],
+                status
+            ))
+
+    def clear_entries(self):
+        self.title_entry.delete(0, tk.END)
+        self.description_text.delete("1.0", tk.END)
+        self.priority_combo.current(1)
+        self.due_date_entry.delete(0, tk.END)
+
+    def mark_complete(self):
+        selected = self.tree.selection()
+        if not selected:
+            messagebox.showwarning("Selection Error", "Please select a task to mark as complete.")
+            return
+        task_id = int(selected[0]) - 1
+        if not self.tasks[task_id]['completed']:
+            self.tasks[task_id]['completed'] = True
+            save_tasks(self.tasks)
+            self.populate_tasks()
+        else:
+            messagebox.showinfo("Info", "Task is already marked as complete.")
+
+    def delete_task(self):
+        selected = self.tree.selection()
+        if not selected:
+            messagebox.showwarning("Selection Error", "Please select a task to delete.")
+            return
+        task_id = int(selected[0]) - 1
+        confirm = messagebox.askyesno("Confirm Delete", f"Are you sure you want to delete the task: '{self.tasks[task_id]['title']}'?")
+        if confirm:
+            self.tasks.pop(task_id)
+            save_tasks(self.tasks)
+            self.populate_tasks()
+
+    def edit_task(self):
+        selected = self.tree.selection()
+        if not selected:
+            messagebox.showwarning("Selection Error", "Please select a task to edit.")
+            return
+        task_id = int(selected[0]) - 1
+        EditTaskWindow(self, task_id)
+
+# ---------------------- Edit Task Window ----------------------
+class EditTaskWindow:
+    def __init__(self, app, task_id):
+        self.app = app
+        self.task_id = task_id
+        self.task = self.app.tasks[task_id]
+
+        self.window = tk.Toplevel()
+        self.window.title("Edit Task")
+        self.window.geometry("400x400")
+        self.window.grab_set()  # Make the edit window modal
+
+        self.create_widgets()
+
+    def create_widgets(self):
+        frame = ttk.Frame(self.window, padding="10")
+        frame.pack(fill="both", expand=True)
+
+        # Title
+        ttk.Label(frame, text="Title:").grid(row=0, column=0, padx=5, pady=5, sticky="W")
+        self.title_entry = ttk.Entry(frame, width=40)
+        self.title_entry.grid(row=0, column=1, padx=5, pady=5, sticky="W")
+        self.title_entry.insert(0, self.task['title'])
+
+        # Description
+        ttk.Label(frame, text="Description:").grid(row=1, column=0, padx=5, pady=5, sticky="NW")
+        self.description_text = tk.Text(frame, width=30, height=5)
+        self.description_text.grid(row=1, column=1, padx=5, pady=5, sticky="W")
+        self.description_text.insert("1.0", self.task['description'])
+
+        # Priority
+        ttk.Label(frame, text="Priority:").grid(row=2, column=0, padx=5, pady=5, sticky="W")
+        self.priority_var = tk.StringVar()
+        self.priority_combo = ttk.Combobox(frame, textvariable=self.priority_var, state="readonly")
+        self.priority_combo['values'] = ("Low", "Medium", "High")
+        self.priority_combo.set(self.task['priority'])
+        self.priority_combo.grid(row=2, column=1, padx=5, pady=5, sticky="W")
+
+        # Due Date
+        ttk.Label(frame, text="Due Date (YYYY-MM-DD):").grid(row=3, column=0, padx=5, pady=5, sticky="W")
+        self.due_date_entry = ttk.Entry(frame, width=20)
+        self.due_date_entry.grid(row=3, column=1, padx=5, pady=5, sticky="W")
+        self.due_date_entry.insert(0, self.task['due_date'])
+
+        # Save Button
+        self.save_button = ttk.Button(frame, text="Save Changes", command=self.save_changes)
+        self.save_button.grid(row=4, column=1, padx=5, pady=20, sticky="E")
+
+    def save_changes(self):
+        title = self.title_entry.get().strip()
+        description = self.description_text.get("1.0", tk.END).strip()
+        priority = self.priority_var.get()
+        due_date = self.due_date_entry.get().strip()
+
+        if not title:
+            messagebox.showwarning("Input Error", "Please enter a task title.")
+            return
+
+        if due_date and not validate_date(due_date):
+            messagebox.showwarning("Input Error", "Please enter a valid due date in YYYY-MM-DD format.")
+            return
+
+        # Update the task
+        self.task['title'] = title
+        self.task['description'] = description
+        self.task['priority'] = priority
+        self.task['due_date'] = due_date
+
+        save_tasks(self.app.tasks)
+        self.app.populate_tasks()
+        self.window.destroy()
+
+# ---------------------- Main Function ----------------------
+def main():
+    root = tk.Tk()
+    app = ToDoApp(root)
+    root.mainloop()
+
+if __name__ == "__main__":
+    main()
